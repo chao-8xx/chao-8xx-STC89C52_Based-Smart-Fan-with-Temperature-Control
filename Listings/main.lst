@@ -1,0 +1,166 @@
+C51 COMPILER V9.54   MAIN                                                                  12/17/2024 21:14:28 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: E:\Keil MDK\C51\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings
+                    -\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "LCD1602.h"
+   3          #include "DS18B20.h"
+   4          #include "Delay.h"
+   5          #include "AT24C02.h"
+   6          #include "Key.h"
+   7          #include "Timer0.h"
+   8          #include "Timer1.h"
+   9          #include "Buzzer.h"
+  10          
+  11          
+  12          sbit Motor = P1^0;
+  13          
+  14          unsigned char Counter, Compare; // 计数值和比较值，用于输出PWM
+  15          unsigned char KeyNum, Speed;
+  16          float T, TShow;
+  17          unsigned char  THigh;
+  18          
+  19          /* 温度超过阈值自动报警模块 */
+  20          void Alarm_System() {
+  21   1          P2 = 0xFF;
+  22   1          Delay(1000);
+  23   1          P2 = 0x00;
+  24   1          Delay(500);
+  25   1          Buzzer_Time(1000);
+  26   1      }
+  27          
+  28          /* 定时器0中断服务例程 */
+  29          void Timer0_Routine() interrupt 1 {
+  30   1          static unsigned int T0Count;
+  31   1          TL0 = 0x18;        // 设置定时初值
+  32   1          TH0 = 0xFC;        // 设置定时初值
+  33   1          T0Count++;
+  34   1          if (T0Count >= 20) {
+  35   2              T0Count = 0;
+  36   2              Key_Loop();    // 每20ms调用一次按键驱动函数
+  37   2          }
+  38   1      }
+  39          
+  40          /* 定时器1中断服务例程 */
+  41          void Timer1_Routine() interrupt 3 {
+  42   1          static unsigned int T1Count;
+  43   1          TL0 = 0x9C;        // 设置定时初值
+  44   1          TH0 = 0xFF;        // 设置定时初值
+  45   1          T1Count++;
+  46   1          T1Count%= 100;    // 计数值变化范围限制在0~99
+  47   1          if (T1Count < Compare) { // 计数值小于比较值
+  48   2              Motor = 1;        // 输出1
+  49   2          } else {                // 计数值大于比较值
+  50   2              Motor = 0;        // 输出0
+  51   2          }
+  52   1      }
+  53          
+  54          
+C51 COMPILER V9.54   MAIN                                                                  12/17/2024 21:14:28 PAGE 2   
+
+  55           /* 温度读取及显示函数 */
+  56                  void Show_Temperature()
+  57          {
+  58   1              DS18B20_ConvertT();    // 转换温度
+  59   1              T = DS18B20_ReadT();   // 读取温度
+  60   1              if (T < 0) {          // 如果温度小于0
+  61   2                  LCD_ShowChar(1, 3, '-');
+  62   2                  TShow = -T;        // 将温度变为正数
+  63   2              } else {              // 如果温度大于等于0
+  64   2                  LCD_ShowChar(1, 3, '+');
+  65   2                  TShow = T;
+  66   2              }
+  67   1              LCD_ShowNum(1, 4, TShow, 3);    // 显示温度整数部分
+  68   1              LCD_ShowChar(1, 7, '.');
+  69   1              LCD_ShowNum(1, 8, (unsigned long)(TShow * 100) % 100, 2); // 显示温度小数部分
+  70   1              LCD_ShowNum(2, 4, THigh,3); // 显示阈值数据
+  71   1      }
+  72              /*独立按键控制模块函数*/
+  73              void Control_System()
+  74              {
+  75   1            KeyNum=Key();       //接收返回值
+  76   1            if(KeyNum)
+  77   1            {
+  78   2              if(KeyNum==1)
+  79   2              {
+  80   3                if(T<=125)
+  81   3                {
+  82   4                  THigh++;      //按键S1使高阈值增大
+  83   4                }
+  84   3              
+  85   3              }
+  86   2              if(KeyNum==2)
+  87   2              {
+  88   3                if(T<=125)
+  89   3                {
+  90   4                  THigh--;
+  91   4                }                 //按键S2使高阈值减小
+  92   3              }
+  93   2              if(KeyNum==3){Speed++;}     //按键S3使风速增大
+  94   2              if(KeyNum==4)
+  95   2              {
+  96   3                if(Speed!=0)
+  97   3                  Speed--;                //当风速不为0时，按键S4使风速减小
+  98   3              }
+  99   2            }
+ 100   1          }
+ 101               
+ 102          
+ 103          void main() {
+ 104   1          DS18B20_ConvertT();    // 上电先转换一次温度，防止第一次读数据错误
+ 105   1          Delay(1000);           // 等待转换完成
+ 106   1          THigh = AT24C02_ReadByte(0); // 读取温度阈值数据
+ 107   1          if (THigh > 125 ) {
+ 108   2              THigh = 24;       // 如果阈值非法，则设为默认值
+ 109   2          }
+ 110   1          LCD_Init();
+ 111   1          Timer1_Init();
+ 112   1          Timer0_Init();
+ 113   1          LCD_ShowString(1, 1, "T:");
+ 114   1          LCD_ShowString(2, 1, "TH:");
+ 115   1          LCD_ShowString(2, 9, "Speed:");
+ 116   1      
+C51 COMPILER V9.54   MAIN                                                                  12/17/2024 21:14:28 PAGE 3   
+
+ 117   1          while (1) {
+ 118   2          Show_Temperature();
+ 119   2          Control_System();
+ 120   2          Speed%=4;
+ 121   2          if(Speed==0){Compare=0;}
+ 122   2          if(Speed==1){Compare=35;}
+ 123   2          if(Speed==2){Compare=65;}
+ 124   2          if(Speed==3){Compare=88;}
+ 125   2          LCD_ShowNum(2, 15, Speed,1); // 显示风速
+ 126   2      
+ 127   2      
+ 128   2              if (T > THigh) {    // 越界判断
+ 129   3                  LCD_ShowString(1, 13, "OV:H");
+ 130   3                  Alarm_System();
+ 131   3                  Speed++;
+ 132   3              }  else {
+ 133   3                  LCD_ShowString(1, 13, "    ");
+ 134   3              }
+ 135   2            }
+ 136   1      }
+ 137          
+ 138          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    637    ----
+   CONSTANT SIZE    =     24    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     17    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
